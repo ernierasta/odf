@@ -7,25 +7,72 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
-	"github.com/knieriem/odf"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/knieriem/odf"
 )
 
 type Doc struct {
 	XMLName xml.Name `xml:"document-content"`
 	Table   []Table  `xml:"body>spreadsheet>table"`
+	Style   []Style  `xml:"automatic-styles>style"`
+}
+
+type Style struct {
+	Name           string       `xml:"name,attr"`
+	ColumnProps    []SCol       `xml:"table-column-properties"` // `xml:"table-column-properties>column-width,attr"`
+	RowProps       []SRow       `xml:"table-row-properties"`
+	CellProps      []SCell      `xml:"table-cell-properties"`
+	TextProps      []SText      `xml:"text-properties"`
+	ParagraphProps []SParagraph `xml:"paragraph-properties"`
+}
+
+type SCol struct {
+	Width       string `xml:"column-width,attr"`
+	BreakBefore string `xml:"break-before,attr"`
+}
+
+type SRow struct {
+	Height        string `xml:"row-height,attr"`
+	BreakBefore   string `xml:"break-before,attr"`
+	OptimalHeight bool   `xml:"use-optimal-row-height,attr"`
+}
+
+type SCell struct {
+	BorderTop       string `xml:"border-top,attr"`
+	BorderBottom    string `xml:"border-bottom,attr"`
+	BorderLeft      string `xml:"border-left,attr"`
+	BorderRight     string `xml:"border-right,attr"`
+	BackgroundColor string `xml:"background-color,attr"`
+	AlignVertical   string `xml:"vertical-align,attr"`
+}
+
+type SText struct {
+	Size   string `xml:"font-size,attr"`
+	Weight string `xml:"font-weight,attr"`
+}
+
+type SParagraph struct {
+	Align      string `xml:"text-align,attr"`
+	MarginLeft string `xml:"margin-left,attr"`
 }
 
 type Table struct {
 	Name   string   `xml:"name,attr"`
-	Column []string `xml:"table-column"`
+	Column []Column `xml:"table-column"`
 	Row    []Row    `xml:"table-row"`
 }
 
+type Column struct {
+	Style           string `xml:"style-name,attr"`
+	DefaltCellStyle string `xml:"default-cell-style-name,attr"`
+}
+
 type Row struct {
-	RepeatedRows int `xml:"number-rows-repeated,attr"`
+	RepeatedRows int    `xml:"number-rows-repeated,attr"`
+	Style        string `xml:"style-name,attr"`
 
 	Cell []Cell `xml:",any"` // use ",any" to match table-cell and covered-table-cell
 }
