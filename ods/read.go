@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/knieriem/odf"
 )
 
@@ -454,7 +453,6 @@ func GetCellStyleByName(name string, styles []Style) Style {
 
 // ConsolidateStyles - TODO: add all params
 func ConsolidateStyles(r SRow, c SCol, cell Style) Cell {
-	spew.Dump(cell)
 	w, err := ToMM(c.Width)
 	if err != nil {
 		log.Println(err)
