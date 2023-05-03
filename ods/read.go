@@ -382,6 +382,22 @@ func (t *Table) Strings() (s [][]string) {
 	return
 }
 
+func (c *Cell) IsEmpty() bool {
+	if c.Value == "" {
+		return true
+	}
+	return false
+}
+
+func (r *Row) IsEmpty() bool {
+	for _, c := range r.Cell {
+		if !c.IsEmpty() {
+			return false
+		}
+	}
+	return true
+}
+
 func (t *Table) Rows(styles []Style) (rr []Row) {
 	var b bytes.Buffer
 
