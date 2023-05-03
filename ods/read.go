@@ -114,6 +114,27 @@ func (r *TRow) IsEmpty() bool {
 	return true
 }
 
+// WidthInMM skips cells from the beginning
+// which are empty
+func (r *Row) WidthInMM() float64 {
+	sum := 0.0
+	prevEmpty := true
+	for i := range r.Cell {
+		empty := r.Cell[i].IsEmpty()
+		if !(prevEmpty && empty) {
+			sum += r.Cell[i].Width
+		}
+		if empty { // if ever non-empty - lock it
+			prevEmpty = empty
+		}
+	}
+	return sum
+}
+
+func (r *Row) HeightInMM() float64 {
+	return r.Cell[0].Height
+}
+
 // Return the contents of a row as a slice of strings. Cells that are
 // covered by other cells will appear as empty strings.
 func (r *TRow) Strings(b *bytes.Buffer) (row []string) {
