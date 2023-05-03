@@ -7,10 +7,13 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"image/color"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/knieriem/odf"
 )
 
@@ -21,12 +24,12 @@ type Doc struct {
 }
 
 type Style struct {
-	Name           string       `xml:"name,attr"`
-	ColumnProps    []SCol       `xml:"table-column-properties"` // `xml:"table-column-properties>column-width,attr"`
-	RowProps       []SRow       `xml:"table-row-properties"`
-	CellProps      []SCell      `xml:"table-cell-properties"`
-	TextProps      []SText      `xml:"text-properties"`
-	ParagraphProps []SParagraph `xml:"paragraph-properties"`
+	Name           string     `xml:"name,attr"`
+	ColumnProps    SCol       `xml:"table-column-properties"`
+	RowProps       SRow       `xml:"table-row-properties"`
+	CellProps      SCell      `xml:"table-cell-properties"`
+	TextProps      SText      `xml:"text-properties"`
+	ParagraphProps SParagraph `xml:"paragraph-properties"`
 }
 
 type SCol struct {
@@ -52,6 +55,7 @@ type SCell struct {
 type SText struct {
 	Size   string `xml:"font-size,attr"`
 	Weight string `xml:"font-weight,attr"`
+	Color  string `xml:"color"`
 }
 
 type SParagraph struct {
@@ -60,24 +64,49 @@ type SParagraph struct {
 }
 
 type Table struct {
-	Name   string   `xml:"name,attr"`
-	Column []Column `xml:"table-column"`
-	Row    []Row    `xml:"table-row"`
+	Name      string    `xml:"name,attr"`
+	XMLColumn []TColumn `xml:"table-column"`
+	XMLRow    []TRow    `xml:"table-row"`
 }
 
-type Column struct {
-	Style           string `xml:"style-name,attr"`
+// Row type is processed row, contaning cells.
+// This is struct user is working with.
+type Row struct {
+	Cell []Cell
+}
+
+// Cell type is processed cell
+type Cell struct {
+	FontSize        float64
+	Font            string
+	FontWeight      string
+	FontColor       color.RGBA
+	BackgroundColor color.RGBA
+	Value           string
+	// Align can be: "start", "center", "end".
+	Align string
+	// AlignVertical can be: "top", "middle", "bottom".
+	AlignVertical string
+	// Width is in mm
+	Width float64
+	// Height is in mm
+	Height float64
+}
+
+type TColumn struct {
+	RepeatedCols    int    `xml:"number-columns-repeated,attr"`
+	StyleName       string `xml:"style-name,attr"`
 	DefaltCellStyle string `xml:"default-cell-style-name,attr"`
 }
 
-type Row struct {
+type TRow struct {
 	RepeatedRows int    `xml:"number-rows-repeated,attr"`
-	Style        string `xml:"style-name,attr"`
+	StyleName    string `xml:"style-name,attr"`
 
-	Cell []Cell `xml:",any"` // use ",any" to match table-cell and covered-table-cell
+	Cell []TCell `xml:",any"` // use ",any" to match table-cell and covered-table-cell
 }
 
-func (r *Row) IsEmpty() bool {
+func (r *TRow) IsEmpty() bool {
 	for _, c := range r.Cell {
 		if !c.IsEmpty() {
 			return false
@@ -88,7 +117,7 @@ func (r *Row) IsEmpty() bool {
 
 // Return the contents of a row as a slice of strings. Cells that are
 // covered by other cells will appear as empty strings.
-func (r *Row) Strings(b *bytes.Buffer) (row []string) {
+func (r *TRow) Strings(b *bytes.Buffer) (row []string) {
 	n := len(r.Cell)
 	if n == 0 {
 		return
@@ -134,7 +163,82 @@ func (r *Row) Strings(b *bytes.Buffer) (row []string) {
 	return
 }
 
-type Cell struct {
+func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TColumn) Row {
+	n := len(r.Cell)
+	if n == 0 {
+		return Row{}
+	}
+
+	// remove trailing empty cells
+	for i := n - 1; i >= 0; i-- {
+		if !r.Cell[i].IsEmpty() {
+			break
+		}
+		n--
+	}
+	r.Cell = r.Cell[:n]
+
+	n = 0
+	// calculate the real number of cells (including repeated)
+	for _, c := range r.Cell {
+		switch {
+		case c.RepeatedCols != 0:
+			n += c.RepeatedCols
+		default:
+			n++
+		}
+	}
+
+	//DEBUG
+	//log.Println("cols len:", len(tColumns))
+	//for i := range tColumns {
+	//	log.Println("repeated:", tColumns[i])
+	//}
+	//for i := range styles {
+	//	log.Println("style, col", i, " width:", styles[i].ColumnProps.Width)
+	//}
+
+	cels := make([]Cell, n)
+	w := 0
+	nr := 0
+	rs := 0
+	for _, c := range r.Cell { // i = possition in the row
+		plain := ""
+		if c.XMLName.Local != "covered-table-cell" {
+			plain = c.PlainText(b)
+		}
+
+		// here we are deciding which celumn style
+		// we should use for current cell
+		// columns can also repeat
+		coln := tColumns[nr]
+		if tColumns[nr].RepeatedCols == 0 {
+			nr++
+			rs = 0
+		} else {
+			rs++
+			maxrs := tColumns[nr].RepeatedCols
+			if maxrs == rs {
+				nr++
+			}
+		}
+		sCol := GetColStyleByName(coln.StyleName, styles)
+		sCell := GetCellStyleByName(c.StyleName, styles)
+		cell := ConsolidateStyles(sRow, sCol, sCell)
+		cell.Value = plain
+		cels[w] = cell
+		w++
+		if c.RepeatedCols != 0 {
+			for j := 1; j < c.RepeatedCols; j++ {
+				cels[w] = cell
+				w++
+			}
+		}
+	}
+	return Row{Cell: cels}
+}
+
+type TCell struct {
 	XMLName xml.Name
 
 	// attributes
@@ -143,11 +247,12 @@ type Cell struct {
 	Formula      string `xml:"formula,attr"`
 	RepeatedCols int    `xml:"number-columns-repeated,attr"`
 	ColSpan      int    `xml:"number-columns-spanned,attr"`
+	StyleName    string `xml:"style-name,attr"`
 
 	P []Par `xml:"p"`
 }
 
-func (c *Cell) IsEmpty() (empty bool) {
+func (c *TCell) IsEmpty() (empty bool) {
 	switch len(c.P) {
 	case 0:
 		empty = true
@@ -162,7 +267,7 @@ func (c *Cell) IsEmpty() (empty bool) {
 // PlainText extracts the text from a cell. Space tags (<text:s text:c="#">)
 // are recognized. Inline elements (like span) are ignored, but the
 // text they contain is preserved
-func (c *Cell) PlainText(b *bytes.Buffer) string {
+func (c *TCell) PlainText(b *bytes.Buffer) string {
 	n := len(c.P)
 	if n == 1 {
 		return c.P[0].PlainText(b)
@@ -231,31 +336,31 @@ decode:
 }
 
 func (t *Table) Width() int {
-	return len(t.Column)
+	return len(t.XMLColumn)
 }
 func (t *Table) Height() int {
-	return len(t.Row)
+	return len(t.XMLRow)
 }
 func (t *Table) Strings() (s [][]string) {
 	var b bytes.Buffer
 
-	n := len(t.Row)
+	n := len(t.XMLRow)
 	if n == 0 {
 		return
 	}
 
 	// remove trailing empty rows
 	for i := n - 1; i >= 0; i-- {
-		if !t.Row[i].IsEmpty() {
+		if !t.XMLRow[i].IsEmpty() {
 			break
 		}
 		n--
 	}
-	t.Row = t.Row[:n]
+	t.XMLRow = t.XMLRow[:n]
 
 	n = 0
 	// calculate the real number of rows (including repeated rows)
-	for _, r := range t.Row {
+	for _, r := range t.XMLRow {
 		switch {
 		case r.RepeatedRows != 0:
 			n += r.RepeatedRows
@@ -266,7 +371,7 @@ func (t *Table) Strings() (s [][]string) {
 
 	s = make([][]string, n)
 	w := 0
-	for _, r := range t.Row {
+	for _, r := range t.XMLRow {
 		row := r.Strings(&b)
 		s[w] = row
 		w++
@@ -276,6 +381,112 @@ func (t *Table) Strings() (s [][]string) {
 		}
 	}
 	return
+}
+
+func (t *Table) Rows(styles []Style) (rr []Row) {
+	var b bytes.Buffer
+
+	n := len(t.XMLRow)
+	if n == 0 {
+		return
+	}
+
+	// remove trailing empty rows
+	for i := n - 1; i >= 0; i-- {
+		if !t.XMLRow[i].IsEmpty() {
+			break
+		}
+		n--
+	}
+	t.XMLRow = t.XMLRow[:n]
+
+	n = 0
+	// calculate the real number of rows (including repeated rows)
+	for _, r := range t.XMLRow {
+		switch {
+		case r.RepeatedRows != 0:
+			n += r.RepeatedRows
+		default:
+			n++
+		}
+	}
+
+	rr = make([]Row, n)
+	w := 0
+	for _, r := range t.XMLRow {
+		row := r.Cells(&b, styles, GetRowStyleByName(r.StyleName, styles), t.XMLColumn)
+		rr[w] = row
+		w++
+		for j := 1; j < r.RepeatedRows; j++ {
+			rr[w] = row
+			w++
+		}
+	}
+	return
+}
+
+func GetRowStyleByName(name string, styles []Style) SRow {
+	for i := range styles {
+		if styles[i].Name == name {
+			return styles[i].RowProps
+		}
+	}
+	return SRow{}
+}
+
+func GetColStyleByName(name string, styles []Style) SCol {
+	for i := range styles {
+		if styles[i].Name == name {
+			return styles[i].ColumnProps
+		}
+	}
+	return SCol{}
+}
+
+func GetCellStyleByName(name string, styles []Style) Style {
+	for i := range styles {
+		if styles[i].Name == name {
+			return styles[i]
+		}
+	}
+	return Style{}
+}
+
+// ConsolidateStyles - TODO: add all params
+func ConsolidateStyles(r SRow, c SCol, cell Style) Cell {
+	spew.Dump(cell)
+	w, err := ToMM(c.Width)
+	if err != nil {
+		log.Println(err)
+	}
+	h, err := ToMM(r.Height)
+	if err != nil {
+		log.Println(err)
+	}
+	bc, err := ParseHexColor(cell.CellProps.BackgroundColor)
+	if err != nil {
+		log.Println("error parsing background hex to RGBA,", err)
+	}
+	tc, err := ParseHexColor(cell.TextProps.Color)
+	if err != nil {
+		log.Println("error parsing hex to RGBA,", err)
+	}
+
+	fs, err := PxToFloat64(cell.TextProps.Size)
+	if err != nil {
+		log.Println(err)
+	}
+
+	return Cell{
+		Width:           w,
+		Height:          h,
+		Align:           cell.ParagraphProps.Align,
+		AlignVertical:   cell.CellProps.AlignVertical,
+		FontSize:        fs,
+		FontWeight:      cell.TextProps.Weight,
+		FontColor:       tc,
+		BackgroundColor: bc,
+	}
 }
 
 type File struct {
