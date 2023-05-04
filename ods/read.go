@@ -230,6 +230,19 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 			plain = c.PlainText(b)
 		}
 
+		// fix cell width if spanned
+		// it must be calculated before incrementing nr var
+		sum := 0.0
+		if c.ColSpan != 0 {
+			for i := 0; i < c.ColSpan; i++ {
+				wid, err := ToMM(GetColStyleByName(tColumns[nr+i].StyleName, styles).Width)
+				if err != nil {
+					log.Println("TRow.Cells:", err)
+				}
+				sum += wid
+			}
+		}
+
 		// here we are deciding which column style
 		// we should use for current cell
 		// columns can also repeat
@@ -249,18 +262,9 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 		cell := ConsolidateStyles(sRow, sCol, sCell)
 		cell.Value = plain
 
-		// fix cell width if spanned
-		sum := 0.0
 		if c.ColSpan != 0 {
-			for i := 0; i < c.ColSpan; i++ {
-				wid, err := ToMM(GetColStyleByName(tColumns[nr+i].StyleName, styles).Width)
-				if err != nil {
-					log.Println("TRow.Cells:", err)
-				}
-				sum += wid
-			}
+			cell.Width = sum
 		}
-		cell.Width = sum
 
 		cels[w] = cell
 		w++
