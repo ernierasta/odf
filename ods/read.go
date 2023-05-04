@@ -49,6 +49,8 @@ type SCell struct {
 	BorderRight     string `xml:"border-right,attr"`
 	BackgroundColor string `xml:"background-color,attr"`
 	AlignVertical   string `xml:"vertical-align,attr"`
+	NrColsSpanned   int    `xml:"number-columns-spanned"`
+	NrRowsSpanned   int    `xml:"number-rows-spanned"`
 }
 
 type SText struct {
@@ -228,7 +230,7 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 			plain = c.PlainText(b)
 		}
 
-		// here we are deciding which celumn style
+		// here we are deciding which column style
 		// we should use for current cell
 		// columns can also repeat
 		coln := tColumns[nr]
@@ -246,6 +248,20 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 		sCell := GetCellStyleByName(c.StyleName, styles)
 		cell := ConsolidateStyles(sRow, sCol, sCell)
 		cell.Value = plain
+
+		// fix cell width if spanned
+		sum := 0.0
+		if c.ColSpan != 0 {
+			for i := 0; i < c.ColSpan; i++ {
+				wid, err := ToMM(GetColStyleByName(tColumns[nr+i].StyleName, styles).Width)
+				if err != nil {
+					log.Println("TRow.Cells:", err)
+				}
+				sum += wid
+			}
+		}
+		cell.Width = sum
+
 		cels[w] = cell
 		w++
 		if c.RepeatedCols != 0 {
@@ -267,6 +283,7 @@ type TCell struct {
 	Formula      string `xml:"formula,attr"`
 	RepeatedCols int    `xml:"number-columns-repeated,attr"`
 	ColSpan      int    `xml:"number-columns-spanned,attr"`
+	RowSpan      int    `xml:"number-rows-spanned,attr"`
 	StyleName    string `xml:"style-name,attr"`
 
 	P []Par `xml:"p"`
