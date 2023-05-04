@@ -54,6 +54,7 @@ type SCell struct {
 }
 
 type SText struct {
+	Name   string `xml:"font-name,attr"`
 	Size   string `xml:"font-size,attr"`
 	Weight string `xml:"font-weight,attr"`
 	Color  string `xml:"color"`
@@ -78,8 +79,8 @@ type Row struct {
 
 // Cell type is processed cell
 type Cell struct {
+	FontName        string
 	FontSize        float64
-	Font            string
 	FontWeight      string
 	FontColor       color.RGBA
 	BackgroundColor color.RGBA
@@ -538,6 +539,7 @@ func ConsolidateStyles(r SRow, c SCol, cell Style) Cell {
 		Height:          h,
 		Align:           cell.ParagraphProps.Align,
 		AlignVertical:   cell.CellProps.AlignVertical,
+		FontName:        cell.TextProps.Name,
 		FontSize:        fs,
 		FontWeight:      cell.TextProps.Weight,
 		FontColor:       tc,
