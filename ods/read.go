@@ -135,7 +135,10 @@ func (r *Row) WidthInMM() float64 {
 }
 
 func (r *Row) HeightInMM() float64 {
-	return r.Cell[0].Height
+	if len(r.Cell) > 0 {
+		return r.Cell[0].Height
+	}
+	return -1
 }
 
 // Return the contents of a row as a slice of strings. Cells that are
@@ -383,12 +386,14 @@ func (t *Table) Width() int {
 func (t *Table) Height() int {
 	return len(t.XMLRow)
 }
-func (t *Table) Strings() (s [][]string) {
-	var b bytes.Buffer
+
+// getRowsNr removes trailing empty rows,
+// returns real number of rows (incledes empty rows before table)
+func (t *Table) removeTrailingEmptyRows() int {
 
 	n := len(t.XMLRow)
 	if n == 0 {
-		return
+		return n
 	}
 
 	// remove trailing empty rows
@@ -410,6 +415,14 @@ func (t *Table) Strings() (s [][]string) {
 			n++
 		}
 	}
+
+	return n
+}
+
+func (t *Table) Strings() (s [][]string) {
+	var b bytes.Buffer
+
+	n := t.removeTrailingEmptyRows()
 
 	s = make([][]string, n)
 	w := 0
@@ -444,30 +457,7 @@ func (r *Row) IsEmpty() bool {
 func (t *Table) Rows(styles []Style) (rr []Row) {
 	var b bytes.Buffer
 
-	n := len(t.XMLRow)
-	if n == 0 {
-		return
-	}
-
-	// remove trailing empty rows
-	for i := n - 1; i >= 0; i-- {
-		if !t.XMLRow[i].IsEmpty() {
-			break
-		}
-		n--
-	}
-	t.XMLRow = t.XMLRow[:n]
-
-	n = 0
-	// calculate the real number of rows (including repeated rows)
-	for _, r := range t.XMLRow {
-		switch {
-		case r.RepeatedRows != 0:
-			n += r.RepeatedRows
-		default:
-			n++
-		}
-	}
+	n := t.removeTrailingEmptyRows()
 
 	rr = make([]Row, n)
 	w := 0
