@@ -34,6 +34,7 @@ type Style struct {
 type SCol struct {
 	Width       string `xml:"column-width,attr"`
 	BreakBefore string `xml:"break-before,attr"`
+	Cell
 }
 
 type SRow struct {
@@ -263,7 +264,8 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 		}
 		sCol := GetColStyleByName(coln.StyleName, styles)
 		sCell := GetCellStyleByName(c.StyleName, styles)
-		cell := ConsolidateStyles(sRow, sCol, sCell)
+		sDefaultColCell := GetCellStyleByName(coln.DefaltCellStyle, styles)
+		cell := ConsolidateStyles(sRow, sCol, sCell, sDefaultColCell)
 		cell.Value = plain
 
 		if c.ColSpan != 0 {
@@ -501,7 +503,9 @@ func GetCellStyleByName(name string, styles []Style) Style {
 }
 
 // ConsolidateStyles - TODO: add all params
-func ConsolidateStyles(r SRow, c SCol, cell Style) Cell {
+func ConsolidateStyles(r SRow, c SCol, cell, defaultColCell Style) Cell {
+	var err error
+
 	w, err := ToMM(c.Width)
 	if err != nil {
 		log.Println(err)
@@ -510,30 +514,71 @@ func ConsolidateStyles(r SRow, c SCol, cell Style) Cell {
 	if err != nil {
 		log.Println(err)
 	}
-	bc, err := ParseHexColor(cell.CellProps.BackgroundColor)
+
+	bgColor := color.RGBA{}
+	if cell.CellProps.BackgroundColor != "" {
+		bgColor, err = ParseHexColor(cell.CellProps.BackgroundColor)
+	} else {
+		bgColor, err = ParseHexColor(defaultColCell.CellProps.BackgroundColor)
+	}
 	if err != nil {
 		log.Println("error parsing background hex to RGBA,", err)
 	}
-	tc, err := ParseHexColor(cell.TextProps.Color)
+
+	fontColor := color.RGBA{}
+	if cell.TextProps.Color != "" {
+		fontColor, err = ParseHexColor(cell.TextProps.Color)
+	} else {
+		fontColor, err = ParseHexColor(defaultColCell.TextProps.Color)
+	}
 	if err != nil {
-		log.Println("error parsing hex to RGBA,", err)
+		log.Println("error parsing text color hex to RGBA,", err)
 	}
 
-	fs, err := PxToFloat64(cell.TextProps.Size)
+	fontSize := 0.0
+	if cell.TextProps.Size != "" {
+		fontSize, err = PxToFloat64(cell.TextProps.Size)
+	} else {
+		fontSize, err = PxToFloat64(defaultColCell.TextProps.Size)
+	}
 	if err != nil {
 		log.Println(err)
+	}
+
+	align := ""
+	if cell.ParagraphProps.Align != "" {
+		align = cell.ParagraphProps.Align
+	} else {
+		align = defaultColCell.ParagraphProps.Align
+	}
+
+	alignVert := ""
+	if cell.CellProps.AlignVertical != "" {
+		alignVert = cell.CellProps.AlignVertical
+	} else {
+		alignVert = defaultColCell.CellProps.AlignVertical
+	}
+
+	fontName := ""
+	fontWeight := ""
+	if cell.TextProps.Name != "" {
+		fontName = cell.TextProps.Name
+		fontWeight = cell.TextProps.Weight
+	} else {
+		fontName = defaultColCell.TextProps.Name
+		fontWeight = defaultColCell.TextProps.Weight
 	}
 
 	return Cell{
 		Width:           w,
 		Height:          h,
-		Align:           cell.ParagraphProps.Align,
-		AlignVertical:   cell.CellProps.AlignVertical,
-		FontName:        cell.TextProps.Name,
-		FontSize:        fs,
-		FontWeight:      cell.TextProps.Weight,
-		FontColor:       tc,
-		BackgroundColor: bc,
+		Align:           align,
+		AlignVertical:   alignVert,
+		FontName:        fontName,
+		FontSize:        fontSize,
+		FontWeight:      fontWeight,
+		FontColor:       fontColor,
+		BackgroundColor: bgColor,
 	}
 }
 
