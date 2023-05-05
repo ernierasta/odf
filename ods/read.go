@@ -52,6 +52,7 @@ type SCell struct {
 	AlignVertical   string `xml:"vertical-align,attr"`
 	NrColsSpanned   int    `xml:"number-columns-spanned"`
 	NrRowsSpanned   int    `xml:"number-rows-spanned"`
+	Padding         string `xml:"padding"`
 }
 
 type SText struct {
@@ -94,6 +95,8 @@ type Cell struct {
 	Width float64
 	// Height is in mm
 	Height float64
+	// Padding in mm
+	Padding float64
 }
 
 type TColumn struct {
@@ -569,6 +572,16 @@ func ConsolidateStyles(r SRow, c SCol, cell, defaultColCell Style) Cell {
 		fontWeight = defaultColCell.TextProps.Weight
 	}
 
+	padding := 0.0
+	if cell.CellProps.Padding != "" {
+		padding, err = ToMM(cell.CellProps.Padding)
+	} else {
+		padding, err = ToMM(defaultColCell.CellProps.Padding)
+	}
+	if err != nil {
+		log.Println(err)
+	}
+
 	return Cell{
 		Width:           w,
 		Height:          h,
@@ -579,6 +592,7 @@ func ConsolidateStyles(r SRow, c SCol, cell, defaultColCell Style) Cell {
 		FontWeight:      fontWeight,
 		FontColor:       fontColor,
 		BackgroundColor: bgColor,
+		Padding:         padding,
 	}
 }
 
