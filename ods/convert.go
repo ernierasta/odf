@@ -50,16 +50,27 @@ func ParseHexColor(s string) (c color.RGBA, err error) {
 }
 
 // ToMM function assumes, that measurements are in cm.
-// TODO: is this always true?
+// TODO: is this always true? No, there may be pts.
+// 1pt = 0.3527777778
 func ToMM(s string) (float64, error) {
 	if s == "" {
 		return 0, nil
 	}
-	f, err := strconv.ParseFloat(strings.TrimSuffix(s, "cm"), 64)
-	if err != nil {
-		return 0, errors.New("ToMM: error converting string to float64, " + err.Error())
+	switch s[len(s)-2:] {
+	case "cm":
+		f, err := strconv.ParseFloat(strings.TrimSuffix(s, "cm"), 64)
+		if err != nil {
+			return 0, errors.New("ToMM: error converting string(cm) to float64, " + err.Error())
+		}
+		return f * 10, nil
+	case "pt":
+		f, err := strconv.ParseFloat(strings.TrimSuffix(s, "pt"), 64)
+		if err != nil {
+			return 0, errors.New("ToMM: error converting string(pt) to float64, " + err.Error())
+		}
+		return f * 0.3527777778, nil
 	}
-	return f * 10, nil
+	return 0, errors.New("ToMM: unknown units! " + s)
 }
 
 func PxToFloat64(s string) (float64, error) {
