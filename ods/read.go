@@ -240,10 +240,17 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 
 		// fix cell width if spanned
 		// it must be calculated before incrementing nr var
+		// PROBLEM: cols may be repeated, so nr+1 may not work
 		sum := 0.0
 		if c.ColSpan != 0 {
 			for i := 0; i < c.ColSpan; i++ {
-				wid, err := ToMM(GetColStyleByName(tColumns[nr+i].StyleName, styles).Width)
+				wid := 0.0
+				var err error
+				if i < tColumns[nr].RepeatedCols {
+					wid, err = ToMM(GetColStyleByName(tColumns[nr].StyleName, styles).Width)
+				} else {
+					wid, err = ToMM(GetColStyleByName(tColumns[nr+i].StyleName, styles).Width)
+				}
 				if err != nil {
 					log.Println("TRow.Cells:", err)
 				}
@@ -393,7 +400,7 @@ func (t *Table) Height() int {
 }
 
 // getRowsNr removes trailing empty rows,
-// returns real number of rows (incledes empty rows before table)
+// returns real number of rows (includes empty rows before table)
 func (t *Table) removeTrailingEmptyRows() int {
 
 	n := len(t.XMLRow)
