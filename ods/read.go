@@ -6,7 +6,6 @@ package ods
 import (
 	"bytes"
 	"encoding/xml"
-	"errors"
 	"image/color"
 	"io"
 	"log"
@@ -628,10 +627,11 @@ func NewReader(r io.ReaderAt, size int64) (*File, error) {
 }
 
 func newFile(f *odf.File) (*File, error) {
-	if f.MimeType != odf.MimeTypePfx+"spreadsheet" {
-		f.Close()
-		return nil, errors.New("not a spreadsheet")
-	}
+	// ER: disabled MimeType check
+	//if f.MimeType != odf.MimeTypePfx+"spreadsheet" {
+	//	f.Close()
+	//	return nil, errors.New("not a spreadsheet")
+	//}
 	return &File{f}, nil
 }
 
