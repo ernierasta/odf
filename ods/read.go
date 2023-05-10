@@ -21,13 +21,20 @@ type Doc struct {
 	Style   []Style  `xml:"automatic-styles>style"`
 }
 
+type ODT struct {
+	XMLName xml.Name `xml:"document-content"`
+	Table   []Table  `xml:"body>text>table"`
+	Style   []Style  `xml:"automatic-styles>style"`
+}
+
 type Style struct {
-	Name           string     `xml:"name,attr"`
-	ColumnProps    SCol       `xml:"table-column-properties"`
-	RowProps       SRow       `xml:"table-row-properties"`
-	CellProps      SCell      `xml:"table-cell-properties"`
-	TextProps      SText      `xml:"text-properties"`
-	ParagraphProps SParagraph `xml:"paragraph-properties"`
+	Name            string     `xml:"name,attr"`
+	ParentStyleName string     `xml:"parent-style-name,attr"`
+	ColumnProps     SCol       `xml:"table-column-properties"`
+	RowProps        SRow       `xml:"table-row-properties"`
+	CellProps       SCell      `xml:"table-cell-properties"`
+	TextProps       SText      `xml:"text-properties"`
+	ParagraphProps  SParagraph `xml:"paragraph-properties"`
 }
 
 type SCol struct {
@@ -38,6 +45,7 @@ type SCol struct {
 
 type SRow struct {
 	Height        string `xml:"row-height,attr"`
+	MinHeight     string `xml:"min-row-height,attr"` // ODT attr
 	BreakBefore   string `xml:"break-before,attr"`
 	OptimalHeight bool   `xml:"use-optimal-row-height,attr"`
 }
@@ -86,6 +94,7 @@ type Cell struct {
 	FontColor       color.RGBA
 	BackgroundColor color.RGBA
 	Value           string
+	Paragraphs      []Par
 	// Align can be: "start", "center", "end".
 	Align string
 	// AlignVertical can be: "top", "middle", "bottom".
@@ -141,7 +150,7 @@ func (r *Row) HeightInMM() float64 {
 	if len(r.Cell) > 0 {
 		return r.Cell[0].Height
 	}
-	return -1
+	return 0
 }
 
 // Return the contents of a row as a slice of strings. Cells that are
@@ -233,8 +242,10 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 	rs := 0
 	for _, c := range r.Cell { // i = possition in the row
 		plain := ""
+		pars := []Par{}
 		if c.XMLName.Local != "covered-table-cell" {
 			plain = c.PlainText(b)
+			pars = c.P
 		}
 
 		// fix cell width if spanned
@@ -276,6 +287,7 @@ func (r *TRow) Cells(b *bytes.Buffer, styles []Style, sRow SRow, tColumns []TCol
 		sDefaultColCell := GetCellStyleByName(coln.DefaltCellStyle, styles)
 		cell := ConsolidateStyles(sRow, sCol, sCell, sDefaultColCell)
 		cell.Value = plain
+		cell.Paragraphs = pars
 
 		if c.ColSpan != 0 {
 			cell.Width = sum
@@ -342,7 +354,8 @@ func (c *TCell) PlainText(b *bytes.Buffer) string {
 }
 
 type Par struct {
-	XML string `xml:",innerxml"`
+	StyleName string `xml:"style-name,attr"`
+	XML       string `xml:",innerxml"`
 }
 
 func (p *Par) PlainText(b *bytes.Buffer) string {
@@ -523,6 +536,12 @@ func ConsolidateStyles(r SRow, c SCol, cell, defaultColCell Style) Cell {
 	if err != nil {
 		log.Println(err)
 	}
+	if h == 0 {
+		h, err = ToMM(r.MinHeight)
+		if err != nil {
+			log.Println(err)
+		}
+	}
 
 	bgColor := color.RGBA{}
 	if cell.CellProps.BackgroundColor != "" {
@@ -639,6 +658,21 @@ func newFile(f *odf.File) (*File, error) {
 // the returned Doc will contain the data of the rows and cells
 // of the table(s) contained in the ODS file.
 func (f *File) ParseContent(doc *Doc) (err error) {
+	content, err := f.Open("content.xml")
+	if err != nil {
+		return
+	}
+	defer content.Close()
+
+	d := xml.NewDecoder(content)
+	err = d.Decode(doc)
+	return
+}
+
+// Parse the content.xml part of an ODS file. On Success
+// the returned Doc will contain the data of the rows and cells
+// of the table(s) contained in the ODS file.
+func (f *File) ParseODT(doc *ODT) (err error) {
 	content, err := f.Open("content.xml")
 	if err != nil {
 		return
